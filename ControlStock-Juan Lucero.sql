@@ -2,7 +2,7 @@
 CREATE DATABASE ControlStockTienda;
 USE ControlStockTienda;
 
--- Tabla: Categoría
+-- Tabla: Categoria
 CREATE TABLE Categoria (
     id_categoria INT AUTO_INCREMENT PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL
@@ -33,7 +33,7 @@ CREATE TABLE Producto (
 CREATE TABLE Usuario (
     id_usuario INT AUTO_INCREMENT PRIMARY KEY,
     nombre_usuario VARCHAR(100) NOT NULL,
-    contraseña VARCHAR(100) NOT NULL,
+    contrasena VARCHAR(100) NOT NULL,
     rol VARCHAR(50)
 );
 
@@ -49,7 +49,7 @@ CREATE TABLE MovimientoStock (
     FOREIGN KEY (id_usuario) REFERENCES Usuario(id_usuario)
 );
 
--- Insertar categorías
+-- Insertar categorias
 INSERT INTO Categoria (nombre) VALUES
 ('Esmaltes'),
 ('Tratamientos'),
@@ -89,7 +89,7 @@ INSERT INTO Producto (nombre, descripcion, precio, stock_actual, id_categoria, i
 ('Alcohol Isopropílico', 'Limpieza y desinfección', 850, 35, 5, 1);
 
 -- Insertar usuarios
-INSERT INTO Usuario (nombre_usuario, contraseña, rol) VALUES
+INSERT INTO Usuario (nombre_usuario, contrasena, rol) VALUES
 ('admin', 'admin123', 'administrador'),
 ('juanchy', 'uñas2025', 'empleado'),
 ('sofia', 'nailart22', 'empleado'),
@@ -153,6 +153,42 @@ FROM Producto p
 JOIN Categoria c ON p.id_categoria = c.id_categoria
 JOIN Proveedor pr ON p.id_proveedor = pr.id_proveedor;
 
+-- Vista: historial de movimientos con detalle de producto y usuario
+
+CREATE VIEW vw_movimientos_detallados AS
+SELECT m.id_movimiento,
+       m.fecha,
+       m.tipo,
+       m.cantidad,
+       p.nombre AS producto,
+       u.nombre_usuario AS usuario
+FROM MovimientoStock m
+JOIN Producto p ON m.id_producto = p.id_producto
+JOIN Usuario u ON m.id_usuario = u.id_usuario
+ORDER BY m.fecha DESC, m.id_movimiento DESC;
+
+-- Vista: resumen de stock agrupado por categoria
+
+
+CREATE VIEW vw_resumen_stock_por_categoria AS
+SELECT c.id_categoria,
+       c.nombre AS categoria,
+       COUNT(p.id_producto) AS cantidad_productos,
+       COALESCE(SUM(p.stock_actual),0) AS stock_total
+FROM Categoria c
+LEFT JOIN Producto p ON p.id_categoria = c.id_categoria
+GROUP BY c.id_categoria, c.nombre;
+
+-- Vista: productos con stock bajo (menor a 10 unidades)
+
+
+CREATE VIEW vw_productos_bajo_stock AS
+SELECT p.id_producto,
+       p.nombre,
+       p.stock_actual
+FROM Producto p
+WHERE p.stock_actual < 10;
+
 
 -- Calcular precio con descuento
 
@@ -178,3 +214,44 @@ RETURN precio * stock;
 
 SELECT nombre, fn_valor_stock(precio, stock_actual) AS valor_total
 FROM Producto;
+
+
+-- Registro de entrada de stock
+
+CREATE PROCEDURE sp_registrar_entrada(
+    IN p_id_producto INT,
+    IN p_cantidad INT,
+    IN p_id_usuario INT
+)
+INSERT INTO MovimientoStock (id_producto, fecha, tipo, cantidad, id_usuario)
+VALUES (p_id_producto, CURDATE(), 'entrada', p_cantidad, p_id_usuario);
+
+
+--  Registrar salida de stock
+
+CREATE PROCEDURE sp_registrar_salida(
+    IN p_id_producto INT,
+    IN p_cantidad INT,
+    IN p_id_usuario INT
+)
+INSERT INTO MovimientoStock (id_producto, fecha, tipo, cantidad, id_usuario)
+VALUES (p_id_producto, CURDATE(), 'salida', p_cantidad, p_id_usuario);
+
+
+-- Eliminar producto
+
+CREATE PROCEDURE sp_eliminar_producto(IN p_id_producto INT)
+DELETE FROM Producto WHERE id_producto = p_id_producto;
+
+
+-- Reponer stock por proveedor
+
+CREATE PROCEDURE sp_reponer_stock_por_proveedor(
+    IN p_id_proveedor INT,
+    IN p_cantidad INT,
+    IN p_id_usuario INT
+)
+INSERT INTO MovimientoStock (id_producto, fecha, tipo, cantidad, id_usuario)
+SELECT p.id_producto, CURDATE(), 'entrada', p_cantidad, p_id_usuario
+FROM Producto p
+WHERE p.id_proveedor = p_id_proveedor;
