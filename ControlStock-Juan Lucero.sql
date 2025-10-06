@@ -115,3 +115,66 @@ INSERT INTO MovimientoStock (id_producto, fecha, tipo, cantidad, id_usuario) VAL
 (10, '2025-09-10', 'salida', 10, 10);
 
 
+-- Actualizar stock automáticamente
+
+CREATE TRIGGER trg_actualizar_stock
+AFTER INSERT ON MovimientoStock
+FOR EACH ROW
+UPDATE Producto
+SET stock_actual = stock_actual +
+    CASE WHEN NEW.tipo = 'entrada' THEN NEW.cantidad
+         WHEN NEW.tipo = 'salida' THEN -NEW.cantidad
+    END
+WHERE id_producto = NEW.id_producto;
+
+
+
+-- evitar stock negativo
+
+CREATE TRIGGER trg_evitar_stock_negativo
+BEFORE INSERT ON MovimientoStock
+FOR EACH ROW
+UPDATE Producto
+SET id_producto = id_producto  -- actualización ficticia (no cambia nada)
+WHERE id_producto = NEW.id_producto
+  AND NOT (NEW.tipo = 'salida' 
+           AND (SELECT stock_actual 
+                FROM Producto 
+                WHERE id_producto = NEW.id_producto) < NEW.cantidad);
+
+
+
+-- Vista de stock 
+
+CREATE VIEW vw_stock_productos AS
+SELECT p.id_producto, p.nombre AS producto, c.nombre AS categoria,
+       pr.nombre AS proveedor, p.precio, p.stock_actual
+FROM Producto p
+JOIN Categoria c ON p.id_categoria = c.id_categoria
+JOIN Proveedor pr ON p.id_proveedor = pr.id_proveedor;
+
+
+-- Calcular precio con descuento
+
+
+CREATE FUNCTION fn_precio_con_descuento(precio DECIMAL(10,2), descuento DECIMAL(5,2))
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+RETURN precio - (precio * (descuento / 100));
+
+
+SELECT nombre, fn_precio_con_descuento(precio, 10) AS precio_oferta
+FROM Producto;
+
+
+-- Calcular valor total de stock por producto
+
+
+CREATE FUNCTION fn_valor_stock(precio DECIMAL(10,2), stock INT)
+RETURNS DECIMAL(12,2)
+DETERMINISTIC
+RETURN precio * stock;
+
+
+SELECT nombre, fn_valor_stock(precio, stock_actual) AS valor_total
+FROM Producto;
